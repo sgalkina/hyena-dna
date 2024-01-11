@@ -1,7 +1,6 @@
-_name_: hg38
-bed_file: '/home/projects/matrix/data/dna_transformers/hyena-dna/data/hg38/human-sequences.bed'
-fasta_file: '/home/projects/matrix/data/dna_transformers/hyena-dna/data/hg38/hg38.ml.fa'
-dataset_name: hg38
+_name_: gtdb
+fasta_paths: '/home/projects/cpr_10006/people/svekut/vamb/genomes_paths_96.txt'
+dataset_name: gtdb
 tokenizer_name: null
 cache_dir: null
 max_length: 1024

@@ -18,6 +18,7 @@ from src.dataloaders.datasets.chromatin_profile_dataset import ChromatinProfileD
 from src.dataloaders.datasets.species_dataset import SpeciesDataset
 from src.dataloaders.datasets.icl_genomics_dataset import ICLGenomicsDataset
 from src.dataloaders.datasets.hg38_fixed_dataset import HG38FixedDataset
+from src.dataloaders.datasets.gtdb_dataset import GTDBDataset
 
 
 """
@@ -720,7 +721,104 @@ class HG38Fixed(HG38):
 
         self.dataset_val = self.dataset_train
         self.dataset_test = self.dataset_train
+
+
+class GTDB(HG38):
+    """
+    GTDB Dataloader, samples from a given list of FASTA files
+
+    """
+    _name_ = "gtdb"
+
+    def __init__(self, fasta_paths, tokenizer_name=None, dataset_config_name=None, max_length=1024, d_output=2, rc_aug=False,
+                 max_length_val=None, max_length_test=None, val_ratio=0.0005, val_split_seed=2357, use_fixed_len_val=False,
+                 add_eos=True, detokenize=False, val_only=False, batch_size=32, batch_size_eval=None, num_workers=1,
+                 shuffle=False, pin_memory=False, drop_last=False, fault_tolerant=False, ddp=False,
+                 fast_forward_epochs=None, fast_forward_batches=None, replace_N_token=False, pad_interval=False,
+                 *args, **kwargs):
+        self.dataset_config_name = dataset_config_name
+        self.tokenizer_name = tokenizer_name
+        self.d_output = d_output
+        self.rc_aug = rc_aug  # reverse compliment augmentation
+        self.max_length = max_length
+        self.max_length_val = max_length_val if max_length_val is not None else max_length
+        self.max_length_test = max_length_test if max_length_test is not None else max_length
+        self.val_ratio = val_ratio
+        self.val_split_seed = val_split_seed
+        self.val_only = val_only
+        self.add_eos = add_eos
+        self.detokenize = detokenize
+        self.batch_size = batch_size
+        self.batch_size_eval = batch_size_eval if batch_size_eval is not None else self.batch_size
+        self.num_workers = num_workers
+        self.shuffle = shuffle
+        self.pin_memory = pin_memory
+        self.drop_last = drop_last
+        self.use_fixed_len_val = use_fixed_len_val
+        self.replace_N_token = replace_N_token
+        self.pad_interval = pad_interval
+
+        if fault_tolerant:
+            assert self.shuffle
+        self.fault_tolerant = fault_tolerant
+        if ddp:
+            assert fault_tolerant
+        self.ddp = ddp
+        self.fast_forward_epochs = fast_forward_epochs
+        self.fast_forward_batches = fast_forward_batches
+        if self.fast_forward_epochs is not None or self.fast_forward_batches is not None:
+            assert ddp and fault_tolerant
+
+        self.fasta_paths = fasta_paths
+
+    def setup(self, stage=None):
+        """Set up the tokenizer and init the datasets."""
+        # TODO instantiate with registry
+
+        if self.tokenizer_name == 'char':
+            print("**Using Char-level tokenizer**")
+            self.tokenizer = CharacterTokenizer(
+                characters=['A', 'C', 'G', 'T', 'N'],
+                model_max_length=self.max_length + 2,  # add 2 since default adds eos/eos tokens, crop later
+                add_special_tokens=False,
+            )
+        elif self.tokenizer_name == 'bpe':
+            print("**using pretrained AIRI tokenizer**")
+            self.tokenizer = AutoTokenizer.from_pretrained('AIRI-Institute/gena-lm-bert-base')
+
+        self.vocab_size = len(self.tokenizer)
+
+        self.init_datasets()  # creates the datasets.  You can also just create this inside the setup() here.
+
+    def init_datasets(self):
+        """Init the datasets (separate from the tokenizer)"""
+
+        # delete old datasets to free memory
+        if hasattr(self, 'dataset_train'):
+            del self.dataset_train.files
+
+        # delete old datasets to free memory
+        if hasattr(self, 'dataset_test'):
+            del self.dataset_test.files
     
+        # Create all splits: torch datasets
+        self.dataset_train, self.dataset_val, self.dataset_test = [
+            GTDBDataset(split=split,
+                        fasta_paths=self.fasta_paths,
+                        max_length=max_len,
+                        tokenizer=self.tokenizer,  # pass the tokenize wrapper
+                        tokenizer_name=self.tokenizer_name,
+                        add_eos=self.add_eos,
+                        return_seq_indices=False,
+                        shift_augs=None,
+                        rc_aug=self.rc_aug,
+                        return_augs=False,
+                        replace_N_token=self.replace_N_token,
+                        pad_interval=self.pad_interval)
+            for split, max_len in zip(['train', 'valid', 'test'], [self.max_length, self.max_length_val, self.max_length_test])
+        ]
+        return
+
 
 # if __name__ == '__main__':
 #     """Quick test using dataloader. Can't call from here though."""

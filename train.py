@@ -4,6 +4,8 @@ import random
 import time
 from functools import partial, wraps
 from typing import Callable, List, Sequence
+from pathlib import Path
+from standalone_hyenadna import CharacterTokenizer
 
 import hydra
 import numpy as np
@@ -599,7 +601,8 @@ def create_trainer(config, **kwargs):
             log.info(f"Instantiating callback <{registry.callbacks[_name_]}>")
             callback._name_ = _name_
             callbacks.append(utils.instantiate(registry.callbacks, callback))
-
+    log.info(f"Checkpoint will be saved at {Path(config.callbacks.model_checkpoint.dirpath).resolve()}")
+    
     # Add ProgressiveResizing callback
     if config.callbacks.get("progressive_resizing", None) is not None:
         num_stages = len(config.callbacks.progressive_resizing.stage_params)
@@ -642,7 +645,6 @@ def create_trainer(config, **kwargs):
         trainer = pl.Trainer(**trainer_config_dict, callbacks=callbacks, logger=logger)
     else:
         trainer = hydra.utils.instantiate(config.trainer, callbacks=callbacks, logger=logger)    
-
     return trainer
 
 
@@ -674,8 +676,6 @@ def train(config):
         trainer.test(model)
 
 
-
-
 @hydra.main(config_path="configs", config_name="config.yaml")
 def main(config: OmegaConf):
 
@@ -689,7 +689,6 @@ def main(config: OmegaConf):
     utils.train.print_config(config, resolve=True)
 
     train(config)
-
 
 if __name__ == "__main__":
     main()
