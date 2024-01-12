@@ -185,9 +185,12 @@ class GTDBDataset(torch.utils.data.Dataset):
         for filename, file in self.files.items():
             for name, seq in file.seqs.items():
                 L = len(seq)
-                N_draws = int((len(seq) / self.max_length) / self.N_split) # randomly draw about the half of the sequence with overlaps and missing intervals
+                N_draws = int((len(seq) / self.max_length) / self.N_split) + 1 # randomly draw about the half of the sequence with overlaps and missing intervals
                 for _ in range(N_draws):
-                    rand_start = randrange(0, L - self.max_length)
+                    if L <= self.max_length:
+                        rand_start = 0
+                    else:
+                        rand_start = randrange(0, L - self.max_length)
                     rand_end = rand_start + self.max_length
                     filenames.append(filename)
                     seq_names.append(name)

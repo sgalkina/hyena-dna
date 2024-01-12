@@ -39,7 +39,7 @@ from collections import namedtuple
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import sys
-
+from random import randrange
 
 # helper 1
 def inject_substring(orig_str):
@@ -108,21 +108,30 @@ class HyenaDNAPreTrainedModel(PreTrainedModel):
                         n_classes=2,
                       ):
         # first check if it is a local path
-        pretrained_model_name_or_path = os.path.join(path, model_name)
-        if os.path.isdir(pretrained_model_name_or_path) and download == False:
-            if config is None:
-                config = json.load(open(os.path.join(pretrained_model_name_or_path, 'config.json')))
-        else:
-            hf_url = f'https://huggingface.co/LongSafari/{model_name}'
+        # pretrained_model_name_or_path = os.path.join(path, model_name)
+        # if os.path.isdir(pretrained_model_name_or_path) and download == False:
+        #     if config is None:
+        #         config = json.load(open(os.path.join(pretrained_model_name_or_path, 'config.json')))
+        # else:
+        #     hf_url = f'https://huggingface.co/LongSafari/{model_name}'
 
-            subprocess.run(f'rm -rf {pretrained_model_name_or_path}', shell=True)
-            command = f'mkdir -p {path} && cd {path} && git lfs install && git clone {hf_url}'
-            subprocess.run(command, shell=True)
+        #     subprocess.run(f'rm -rf {pretrained_model_name_or_path}', shell=True)
+        #     command = f'mkdir -p {path} && cd {path} && git lfs install && git clone {hf_url}'
+        #     subprocess.run(command, shell=True)
 
-            if config is None:
-                config = json.load(open(os.path.join(pretrained_model_name_or_path, 'config.json')))
+        #     if config is None:
+        #         config = json.load(open(os.path.join(pretrained_model_name_or_path, 'config.json')))
 
-        scratch_model = HyenaDNAModel(**config, use_head=use_head, n_classes=n_classes)  # the new model format
+        scratch_model = HyenaDNAModel(
+            d_model=128, 
+            n_layer=2, 
+            d_inner=512, 
+            vocab_size=12, 
+            layer=dict(l_max=2050, emb_dim=5),
+            pad_vocab_size_multiple=8,
+            use_head=use_head, 
+            n_classes=n_classes,
+            )  # the new model format
         loaded_ckpt = torch.load(
             # os.path.join(pretrained_model_name_or_path, 'weights.ckpt'),
             sys.argv[1],
@@ -130,13 +139,13 @@ class HyenaDNAPreTrainedModel(PreTrainedModel):
         )
 
         # need to load weights slightly different if using gradient checkpointing
-        if config.get("checkpoint_mixer", False):
-            checkpointing = config["checkpoint_mixer"] == True or config["checkpoint_mixer"] == True
-        else:
-            checkpointing = False
+        # if config.get("checkpoint_mixer", False):
+        #     checkpointing = config["checkpoint_mixer"] == True or config["checkpoint_mixer"] == True
+        # else:
+        #     checkpointing = False
 
         # grab state dict from both and load weights
-        state_dict = load_weights(scratch_model.state_dict(), loaded_ckpt['state_dict'], checkpointing=checkpointing)
+        state_dict = load_weights(scratch_model.state_dict(), loaded_ckpt['state_dict'], checkpointing=False)
 
         # scratch model has now been updated
         scratch_model.load_state_dict(state_dict)
@@ -260,7 +269,7 @@ def run_train():
     pretrained_model_name = 'hyenadna-tiny-1k-seqlen'
 
     max_lengths = {
-        'hyenadna-tiny-1k-seqlen': 1024,
+        'hyenadna-tiny-1k-seqlen': 2048,
         'hyenadna-small-32k-seqlen': 32768,
         'hyenadna-medium-160k-seqlen': 160000,
         'hyenadna-medium-450k-seqlen': 450000,  # T4 up to here
@@ -405,7 +414,7 @@ def inference_single():
         model = HyenaDNAPreTrainedModel.from_pretrained(
             '/home/projects/matrix/data/dna_transformers',
             pretrained_model_name,
-            download=True,
+            download=False,
             config=backbone_cfg,
             device=device,
             use_head=use_head,
@@ -418,15 +427,19 @@ def inference_single():
         model = HyenaDNAModel(**backbone_cfg, use_head=use_head, n_classes=n_classes)
 
     #### Single embedding example ####
-    DIR = '/home/projects/matrix/data/dna_transformers/data'
+    # DIR = '/home/projects/matrix/data/dna_transformers/data'
+    DIR = sys.argv[2]
     df_class = pd.read_csv(os.path.join(DIR, '1740_classes.csv'))
     df_seq = pd.read_csv(os.path.join(DIR, '1740_sequences.csv'))
     df = pd.merge(df_class, df_seq, left_on='assembly', right_on='id')
     embeddings = []
     for i, seq in enumerate(df['sequence']):
-        if i % 100 == 0:
+        if i % 10 == 0:
             print(i)
-        embeddings.append(inference_one(model, seq[:1024], 1024).cpu())
+        embs = []
+        for start in range(0, len(seq), max_length):
+            embs.append(inference_one(model, seq[start:start+max_length], max_length).cpu())
+        embeddings.append(np.expand_dims(np.concatenate(embs).mean(axis=0), 0))
     np.save('embeddings_fresh.npy', np.concatenate(embeddings))
 
 # # uncomment to run! (to get embeddings)
