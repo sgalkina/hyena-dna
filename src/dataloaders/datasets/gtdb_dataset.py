@@ -7,7 +7,7 @@ import torch
 from random import randrange, random
 import numpy as np
 import pyfastx
-
+import os
 
 
 """
@@ -135,7 +135,9 @@ class GTDBDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         split,
+        species,
         fasta_paths,
+        fasta_root,
         max_length,
         pad_max_length=None,
         tokenizer=None,
@@ -147,6 +149,7 @@ class GTDBDataset(torch.utils.data.Dataset):
         return_augs=False,
         replace_N_token=False,  # replace N token with pad token
         pad_interval = False,  # options for different padding
+        task='next_token',
     ):
 
         self.max_length = max_length
@@ -159,49 +162,93 @@ class GTDBDataset(torch.utils.data.Dataset):
         self.pad_interval = pad_interval
         SPLITS_CONFIG = {
             'train': 1,
-            'test': 10,
-            'valid': 10,
+            'test': 1,
+            'valid': 1,
         }
         self.N_split = SPLITS_CONFIG[split]
+        self.split = split
+        self.return_seq_indices = return_seq_indices
+        self.shift_augs = shift_augs
+        self.rc_aug = rc_aug
 
         self.files = {}
+        self.fasta_paths = fasta_paths
+        self.fasta_root = fasta_root
+        with open(self.fasta_paths) as f:
+            self.filenames = [os.path.join(fasta_root, l.strip()) for l in f]
+        self.species = list(set(self.filenames))
+        print(f'Number of species (files) is {len(self.species)} ({self.species[:3]}...)')
 
-        with open(fasta_paths) as f:
-            for l in f:
-                self.files[l] = FastaInterval(
-                    fasta_file = l.strip(),
-                    # max_length = max_length,
-                    return_seq_indices = return_seq_indices,
-                    shift_augs = shift_augs,
-                    rc_aug = rc_aug,
-                    pad_interval = pad_interval,
-                )
+        self.task = task
+        print(f'Task is {self.task}')
 
         self._index_files()
+        self.datasets = {
+            'train': self.df,
+            'test': self.df_test,
+            'valid': self.df_test,
+        }
+        print(f'The dataset has {len(self.datasets["train"])} samples from {len(self.datasets["train"][0].unique())} files for training')
+        print(f'The dataset has {len(self.datasets["test"])} samples from {len(self.datasets["test"][0].unique())} files for testing')
 
     def _index_files(self):
         """Like bed file for HG38 but generated on the fly"""
-        filenames, seq_names, starts, ends = [], [], [], []
-        for filename, file in self.files.items():
-            for name, seq in file.seqs.items():
+        # filenames, seq_names, starts, ends = [], [], [], []
+        # filenames_test, seq_names_test, starts_test, ends_test = [], [], [], []
+        filenames, seq_names, seqs = [], [], []
+        filenames_test, seq_names_test, seqs_test = [], [], []
+        for fasta_filename in self.filenames:
+            fastafile = FastaInterval(
+                fasta_file = fasta_filename,
+                # max_length = max_length,
+                return_seq_indices = self.return_seq_indices,
+                shift_augs = self.shift_augs,
+                rc_aug = self.rc_aug,
+                pad_interval = self.pad_interval,
+            )
+            current_long = 0
+            current_short = 0
+            current_test = 0
+            N_LONG = 100
+            N_SHORT = 40
+            N_TEST = 2
+            for name, seq in fastafile.seqs.items():
                 L = len(seq)
-                N_draws = int((len(seq) / self.max_length) / self.N_split) + 1 # randomly draw about the half of the sequence with overlaps and missing intervals
-                for _ in range(N_draws):
-                    if L <= self.max_length:
-                        rand_start = 0
+                if L <= self.max_length:
+                    rand_start = 0
+                    rand_end = L
+                    if coin_flip():
+                        if current_test < N_TEST:
+                            filenames_test.append(fasta_filename)
+                            seq_names_test.append(name)
+                            seq = fastafile(name, rand_start, rand_end, max_length=self.max_length, return_augs=self.return_augs)
+                            seqs_test.append(seq)
+                            current_test += 1
                     else:
+                        if current_short < N_SHORT:
+                            filenames.append(fasta_filename)
+                            seq_names.append(name)
+                            seq = fastafile(name, rand_start, rand_end, max_length=self.max_length, return_augs=self.return_augs)
+                            seqs.append(seq)
+                            current_short += 1
+                else:
+                    # get around 2 samples from the long sequences for each species
+                    N_draws = min(int(L / self.max_length), N_LONG - current_long)
+                    for _ in range(N_draws):
                         rand_start = randrange(0, L - self.max_length)
-                    rand_end = rand_start + self.max_length
-                    filenames.append(filename)
-                    seq_names.append(name)
-                    starts.append(rand_start)
-                    ends.append(rand_end)
-        self.df = pd.DataFrame({0: filenames, 1: seq_names, 2: starts, 3: ends})
+                        rand_end = rand_start + self.max_length
+                        filenames.append(fasta_filename)
+                        seq_names.append(name)
+                        seq = fastafile(name, rand_start, rand_end, max_length=self.max_length, return_augs=self.return_augs)
+                        seqs.append(seq)
+                        current_long += 1
+        self.df = pd.DataFrame({0: filenames, 1: seq_names, 2: seqs})
         self.df = self.df.sample(frac=1) # shuffle
-        print('Indexed and shuffled')
+        self.df_test = pd.DataFrame({0: filenames_test, 1: seq_names_test, 2: seqs_test})
+        self.df_test = self.df_test.sample(frac=1) # shuffle
 
     def __len__(self):
-        return len(self.df)
+        return len(self.datasets[self.split])
 
     def replace_value(self, x, old_value, new_value):
         return torch.where(x == old_value, new_value, x)
@@ -209,11 +256,12 @@ class GTDBDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         """Returns a sequence of specified len"""
         # sample a random row from df
-        row = self.df.iloc[idx]
+        df = self.datasets[self.split]
+        row = df.iloc[idx]
         # row = (chr, start, end, split)
-        filename, chr_name, start, end = (row[0], row[1], row[2], row[3])
+        filename, chr_name, seq = (row[0], row[1], row[2])
 
-        seq = self.files[filename](chr_name, start, end, max_length=self.max_length, return_augs=self.return_augs)
+        # seq = self.files[filename](chr_name, start, end, max_length=self.max_length, return_augs=self.return_augs)
 
         if self.tokenizer_name == 'char':
 
@@ -246,6 +294,11 @@ class GTDBDataset(torch.utils.data.Dataset):
             seq = self.replace_value(seq, self.tokenizer._vocab_str_to_int['N'], self.tokenizer.pad_token_id)
 
         data = seq[:-1].clone()  # remove eos
-        target = seq[1:].clone()  # offset by 1, includes eos
+        if self.task == 'next_token':
+            target = seq[1:].clone()  # offset by 1, includes eos
+        elif self.task == 'species_classification':
+            target = self.species.index(filename)
+        else:
+            raise AttributeError('Unknown task, must be one of the ["next_token", "species_classification"]')
 
         return data, target

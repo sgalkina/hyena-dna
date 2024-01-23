@@ -729,8 +729,9 @@ class GTDB(HG38):
 
     """
     _name_ = "gtdb"
+    l_output = 0
 
-    def __init__(self, fasta_paths, tokenizer_name=None, dataset_config_name=None, max_length=1024, d_output=2, rc_aug=False,
+    def __init__(self, fasta_paths, fasta_root, task='next_token', tokenizer_name=None, dataset_config_name=None, max_length=1024, d_output=2, rc_aug=False,
                  max_length_val=None, max_length_test=None, val_ratio=0.0005, val_split_seed=2357, use_fixed_len_val=False,
                  add_eos=True, detokenize=False, val_only=False, batch_size=32, batch_size_eval=None, num_workers=1,
                  shuffle=False, pin_memory=False, drop_last=False, fault_tolerant=False, ddp=False,
@@ -738,7 +739,6 @@ class GTDB(HG38):
                  *args, **kwargs):
         self.dataset_config_name = dataset_config_name
         self.tokenizer_name = tokenizer_name
-        self.d_output = d_output
         self.rc_aug = rc_aug  # reverse compliment augmentation
         self.max_length = max_length
         self.max_length_val = max_length_val if max_length_val is not None else max_length
@@ -757,6 +757,8 @@ class GTDB(HG38):
         self.use_fixed_len_val = use_fixed_len_val
         self.replace_N_token = replace_N_token
         self.pad_interval = pad_interval
+        self.task = task
+        print(f'In GTDB, the task is {self.task}')
 
         if fault_tolerant:
             assert self.shuffle
@@ -770,6 +772,10 @@ class GTDB(HG38):
             assert ddp and fault_tolerant
 
         self.fasta_paths = fasta_paths
+        self.fasta_root = fasta_root
+        with open(fasta_paths) as f:
+            self.species = [l.strip() for l in f]
+        self.d_output = len(self.species)
 
     def setup(self, stage=None):
         """Set up the tokenizer and init the datasets."""
@@ -804,6 +810,8 @@ class GTDB(HG38):
         # Create all splits: torch datasets
         self.dataset_train, self.dataset_val, self.dataset_test = [
             GTDBDataset(split=split,
+                        species=self.species,
+                        fasta_root=self.fasta_root,
                         fasta_paths=self.fasta_paths,
                         max_length=max_len,
                         tokenizer=self.tokenizer,  # pass the tokenize wrapper
@@ -814,7 +822,8 @@ class GTDB(HG38):
                         rc_aug=self.rc_aug,
                         return_augs=False,
                         replace_N_token=self.replace_N_token,
-                        pad_interval=self.pad_interval)
+                        pad_interval=self.pad_interval,
+                        task=self.task)
             for split, max_len in zip(['train', 'valid', 'test'], [self.max_length, self.max_length_val, self.max_length_test])
         ]
         return

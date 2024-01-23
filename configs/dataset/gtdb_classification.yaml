@@ -3,6 +3,7 @@ fasta_paths: '/home/projects/cpr_10006/people/svekut/vamb/genomes_paths_96.txt'
 fasta_root: ''
 dataset_name: gtdb
 tokenizer_name: null
+task: species_classification
 cache_dir: null
 max_length: 1024
 add_eos: True
@@ -10,7 +11,6 @@ batch_size: 8  # per GPU
 batch_size_eval: ${eval:${.batch_size} * 2}
 num_workers: 4  # For preprocessing only
 shuffle: True
-rc_aug: True
 pin_memory: True
 __train_len: ${div_up:1_000_000_000, ${.max_length}}
 __l_max: ${.max_length}

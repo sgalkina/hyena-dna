@@ -119,4 +119,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+*.npy
+*.out
+
 # End of https://www.gitignore.io/api/python
