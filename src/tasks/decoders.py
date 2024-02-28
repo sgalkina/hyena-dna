@@ -40,8 +40,6 @@ class SequenceDecoder(Decoder):
         self, d_model, d_output=None, l_output=None, use_lengths=False, mode="last"
     ):
         super().__init__()
-        print('d_model, d_output', d_model, d_output)
-        print('mode', mode)
         self.output_transform = nn.Identity() if d_output is None else nn.Linear(d_model, d_output)
 
         if l_output is None:

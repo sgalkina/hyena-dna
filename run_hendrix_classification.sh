@@ -11,9 +11,9 @@ conda activate hyena-dna
 
 
 /home/nmb127/.conda/envs/hyena-dna/bin/python -m train \
-    wandb.group="hyena-16k-ep100-family-large-clas" \
+    wandb.group="hyena-16k-ep100-family-all-clas" \
     experiment=hg38/gtdb_classification trainer.max_epochs=100 \
-    dataset.fasta_paths=/home/nmb127/code/data/802_genome_paths.txt \
+    dataset.fasta_paths=/home/nmb127/code/data/genomes_paths.txt \
     dataset.fasta_root=/home/nmb127/code/data/ \
     model.d_model=256 \
     model.n_layer=3 \
@@ -23,7 +23,25 @@ conda activate hyena-dna
     dataset.max_length=16384 \
     optimizer.lr=6e-4 \
     trainer.devices=1 \
-    train.pretrained_model_path=/home/nmb127/code/hyena-dna/outputs/2024-01-22/15-38-30-641387/checkpoints/last.ckpt
+    train.pretrained_model_path=/home/nmb127/code/hyena-dna/outputs/2024-01-24/16-33-52-539694/checkpoints/last.ckpt
+
+# /home/nmb127/.conda/envs/hyena-dna/bin/python huggingface.py /home/nmb127/code/hyena-dna/outputs/2024-01-24/16-33-52-539694/checkpoints/last.ckpt /home/nmb127/code/data 3
+
+
+# /home/nmb127/.conda/envs/hyena-dna/bin/python -m train \
+#     wandb.group="hyena-16k-ep100-family-large-clas" \
+#     experiment=hg38/gtdb_classification trainer.max_epochs=100 \
+#     dataset.fasta_paths=/home/nmb127/code/data/802_genome_paths.txt \
+#     dataset.fasta_root=/home/nmb127/code/data/ \
+#     model.d_model=256 \
+#     model.n_layer=3 \
+#     model.d_inner=1024 \
+#     dataset.batch_size=32 \
+#     train.global_batch_size=256 \
+#     dataset.max_length=16384 \
+#     optimizer.lr=6e-4 \
+#     trainer.devices=1 \
+#     train.pretrained_model_path=/home/nmb127/code/hyena-dna/outputs/2024-01-22/15-38-30-641387/checkpoints/last.ckpt
 
 
 # /home/nmb127/.conda/envs/hyena-dna/bin/python -m train \

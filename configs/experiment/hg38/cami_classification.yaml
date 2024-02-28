@@ -1,6 +1,6 @@
 # @package _global_
 defaults:
-  - /pipeline: gtdb_classification
+  - /pipeline: cami_classification
   - override /scheduler: cosine_warmup_timm
 
 model:

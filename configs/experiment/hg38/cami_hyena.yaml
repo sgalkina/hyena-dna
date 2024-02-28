@@ -1,11 +1,11 @@
 # @package _global_
 defaults:
-  - /pipeline: gtdb_classification
+  - /pipeline: cami
   - override /scheduler: cosine_warmup_timm
 
 model:
-  _name_: dna_embedding
-  d_model: 128
+  _name_: lm
+  d_model: 32
   n_layer: 2
   d_inner: ${eval:4 * ${.d_model}}
   vocab_size: 12
@@ -30,8 +30,10 @@ model:
     lr_pos_emb: 0.0
 
 task:
-  metrics:
-    - accuracy
+  _name_: lm
+  loss:
+    _name_: cross_entropy
+    ignore_index: 4
 
 trainer:
   accelerator: gpu
@@ -53,7 +55,7 @@ dataset:
   tokenizer_name: char
   pad_max_length: null  # needed for bpe tokenizer
   add_eos: true
-  rc_aug: false
+  rc_aug: true
   num_workers: 12
   use_fixed_len_val: false  # placing a fixed length val here, but it's really the test
   replace_N_token: false  # replace N (uncertain token) with pad tokens in dataloader
@@ -67,21 +69,10 @@ scheduler:
   lr_min: ${eval:0.1 * ${optimizer.lr}}
 
 optimizer:
-  lr: 6e-5
+  lr: 6e-4
   weight_decay: 0.1
 
 train:
   gpu_mem: ${eval:"round(float(__import__('subprocess').check_output('nvidia-smi -i 0 --query-gpu=memory.total --format=csv,noheader,nounits', shell=True).strip().decode()) / 1000)"}
   seed: 2222
-  global_batch_size: 256 # set to a fixed amount for comparison between runs with diff batch_size's to fit onto GPU
-  remove_test_loader_in_eval: True  # there is a unique validation / test set in this benchmark
-  pretrained_model_strict_load: False  # false allows encoder/decoder to be used if new model uses it
-  # for loading backbone and not head, requires both of these flags below
-  # From scratch
-  # pretrained_model_path: null
-  # pretrained_model_state_hook: null
-  # # Pretrained
-  pretrained_model_path: /local-scratch/nigam/projects/mwornow/projects/safari-internal/outputs/2023-04-14/8_256_160.ckpt
-  pretrained_model_state_hook:
-    _name_: load_backbone
-    freeze_backbone: false  # seems to work much better if false (ie finetune entire model)
+  global_batch_size: 256  # effects the scheduler, need to set properly

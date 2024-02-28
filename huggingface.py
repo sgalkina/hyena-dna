@@ -276,77 +276,82 @@ def inference_single():
 
     #### Single embedding example ####
     DIR = sys.argv[2]
-    # df_class = pd.read_csv(os.path.join(DIR, '1740_classes.csv'))
-    # df_seq = pd.read_csv(os.path.join(DIR, '1740_sequences.csv'))
-    # df = pd.merge(df_class, df_seq, left_on='assembly', right_on='id')
+
+    # df_class = pd.read_csv(os.path.join(DIR, '10000_5_families.csv'))
     # embeddings = []
-    # for i, seq in enumerate(df['sequence']):
-    #     if i % 10 == 0:
-    #         print(i)
-    #     embs = []
-    #     for start in range(0, len(seq), max_length):
-    #         embs.append(inference_one(model, seq[start:start+max_length], max_length).cpu())
-    #     embeddings.append(np.expand_dims(np.concatenate(embs).mean(axis=0), 0))
-    # np.save(f'embeddings_long_short_gpu8_{sys.argv[3]}.npy', np.concatenate(embeddings))
-
-    # df_class = pd.read_csv(os.path.join(DIR, '13065_classes.csv'))
-    # for i, row in enumerate(df_class['original'].unique()):
-    #     if i % 10 == 0:
-    #         print(i)
-    #     if os.path.exists(f'/home/nmb127/code//data/to_copy/{row}_genomic.fna.gz'):
-    #         seqs = []
-    #         names = []
-    #         for name, seq in pyfastx.Fastx(f'/home/nmb127/code//data/to_copy/{row}_genomic.fna.gz'):
-    #             seqs.append(seq)
-    #             names.append(name)
-    #         np.save(f'/home/nmb127/code/data/uzipped_fasta/{row}_sequences.npy', np.array(seqs))
-    #         np.save(f'/home/nmb127/code/data/uzipped_fasta/{row}_names.npy', np.array(names))
-
-
-    df_class = pd.read_csv(os.path.join(DIR, '2000_seqs_test.csv'))
-    embeddings = []
-    species = []
-    genera = []
-    ids = []
-    df_path = pd.read_csv('/home/nmb127/code/data/genome_paths_map.csv')
-    PATHS_MAP = {o: f for o, f in zip(df_path['accession'], df_path['0'])}
-    for filename, df_g in df_class.groupby('original'):
-        print(filename)
-        seqs = {name: seq for name, seq in pyfastx.Fastx(os.path.join('/home/nmb127/code/data/', PATHS_MAP[filename]))}
-        for i, row in df_g.iterrows():
-            seq = seqs[row['assembly']]
-            embs = []
-            for start in range(0, len(seq), max_length):
-                embs.append(inference_one(model, seq[start:start+max_length], max_length).cpu())
-            embeddings.append(np.expand_dims(np.concatenate(embs).mean(axis=0), 0))
-            species.append(row['original'])
-            genera.append(row['g'])
-            ids.append(row['assembly'])
-    np.save(f'embeddings_2000_family_{sys.argv[3]}.npy', np.concatenate(embeddings))
-    np.save(f'genera_family_2000.npy', np.array(genera))
-    np.save(f'species_family_2000.npy', np.array(species))
-    np.save(f'ids_family_2000.npy', np.array(ids))
-
-    # DIR = sys.argv[2]
-    # df_class = pd.read_csv(os.path.join(DIR, '1740_classes.csv'))
-    # df_seq = pd.read_csv(os.path.join(DIR, '1740_sequences.csv'))
-    # df = pd.merge(df_class, df_seq, left_on='assembly', right_on='id')
-    # embeddings = []
-    # for i, row in df.iterrows():
-    #     if i % 10 == 0:
-    #         print(i)
-    #     if os.path.exists(f'/home/nmb127/code/data/uzipped_fasta/{row["original"]}_sequences.npy'):
-    #         seqs = np.load(f'/home/nmb127/code/data/uzipped_fasta/{row["original"]}_sequences.npy', allow_pickle=True)
-    #         names = np.load(f'/home/nmb127/code/data/uzipped_fasta/{row["original"]}_names.npy', allow_pickle=True)
+    # species = []
+    # genera = []
+    # ids = []
+    # families = []
+    # df_path = pd.read_csv('/home/nmb127/code/data/genome_paths_map.csv')
+    # PATHS_MAP = {o: f for o, f in zip(df_path['accession'], df_path['0'])}
+    # for filename, df_g in df_class.groupby('original'):
+    #     print(filename)
+    #     seqs = {name: seq for name, seq in pyfastx.Fastx(os.path.join('/home/nmb127/code/data/', PATHS_MAP[filename]))}
+    #     for i, row in df_g.iterrows():
+    #         seq = seqs[row['assembly']]
     #         embs = []
-    #         mapping = {name: seq for name, seq in zip(names, seqs)}
-    #         seq = mapping[row['id']]
     #         for start in range(0, len(seq), max_length):
     #             embs.append(inference_one(model, seq[start:start+max_length], max_length).cpu())
     #         embeddings.append(np.expand_dims(np.concatenate(embs).mean(axis=0), 0))
-    # np.save(f'embeddings_debug_{sys.argv[3]}.npy', np.concatenate(embeddings))
+    #         species.append(row['original'])
+    #         genera.append(row['g'])
+    #         families.append(row['f'])
+    #         ids.append(row['assembly'])
+    # np.save(f'embeddings_5_families_{sys.argv[3]}.npy', np.concatenate(embeddings))
+    # np.save(f'genera_5_families.npy', np.array(genera))
+    # np.save(f'species_5_families.npy', np.array(species))
+    # np.save(f'families_5_families.npy', np.array(families))
+    # np.save(f'ids_5_families.npy', np.array(ids))
 
-# # uncomment to run! (to get embeddings)
+    # df_fams_set = pd.read_csv(os.path.join(DIR, 'marker_genes_eval.csv'))
+    # embeddings = []
+    # species = []
+    # genes = []
+    # families = []
+    # FNA_PATH = '/home/nmb127/code/data/bac120_marker_genes_reps_r207/fna'
+    # MAP_FILES = {
+    #     'PF00380': 'PF00380.20',
+    #     'PF00410': 'PF00410.20',
+    #     'PF00466': 'PF00466.21',
+    #     'PF01025': 'PF01025.20',
+    #     'PF02576': 'PF02576.18',
+    #     'PF03726': 'PF03726.15',
+    # }
+    # for g, df_g in df_fams_set.groupby('g'):
+    #     print(g)
+    #     seqs = {name: seq for name, seq in pyfastx.Fastx(os.path.join(FNA_PATH, f'{MAP_FILES.get(g, g)}.fna'))}
+    #     for i, row in df_g.iterrows():
+    #         seq = seqs[row['s']]
+    #         embs = []
+    #         for start in range(0, len(seq), max_length):
+    #             embs.append(inference_one(model, seq[start:start+max_length], max_length).cpu())
+    #         embeddings.append(np.expand_dims(np.concatenate(embs).mean(axis=0), 0))
+    #         species.append(row['s'])
+    #         genes.append(row['g'])
+    #         families.append(row['f'])
+    # np.save(f'embeddings_marker_genes_continue_{sys.argv[3]}.npy', np.concatenate(embeddings))
+    # np.save(f'genes_marker_genes_continue.npy', np.array(genes))
+    # np.save(f'species_marker_genes_continue.npy', np.array(species))
+    # np.save(f'families_marker_genes_continue.npy', np.array(families))
+
+    FILENAME = 'contigs_2kbp.fna.gz'
+    seqs_all = {name: seq for name, seq in pyfastx.Fastx(os.path.join('/home/nmb127/code/data/', FILENAME))}
+    df_fams_set = pd.read_csv(os.path.join(DIR, 'urog_contigs.csv'))
+    embeddings = []
+    species = []
+    for i, row in df_fams_set.iterrows():
+        if i % 100 == 0:
+            print(i)
+        seq = seqs_all[row['contigs']]
+        embs = []
+        for start in range(0, len(seq), max_length):
+            embs.append(inference_one(model, seq[start:start+max_length], max_length).cpu())
+        embeddings.append(np.expand_dims(np.concatenate(embs).mean(axis=0), 0))
+        species.append(row['s'])
+    np.save(f'embeddings_urog_finetuned_{sys.argv[3]}.npy', np.concatenate(embeddings))
+    np.save(f'species_urog_finetuned.npy', np.array(species))
+
 inference_single()
 
 

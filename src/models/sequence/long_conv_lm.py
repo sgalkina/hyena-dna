@@ -301,6 +301,7 @@ class LMBackbone(nn.Module):
         # nn.Dropout probabilities are changed.
         # This is for performance reason: we can fuse dropout + add + layer_norm.
         self.fused_dropout_add_ln = fused_dropout_add_ln
+        print('self.fused_dropout_add_ln', self.fused_dropout_add_ln)
         if self.fused_dropout_add_ln and dropout_add_layer_norm is None:
             raise ImportError("dropout_add_layer_norm is not installed")
 

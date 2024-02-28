@@ -209,9 +209,9 @@ class GTDBDataset(torch.utils.data.Dataset):
             current_long = 0
             current_short = 0
             current_test = 0
-            N_LONG = 100
-            N_SHORT = 40
-            N_TEST = 2
+            N_LONG = 5
+            N_SHORT = 1
+            N_TEST = 1
             for name, seq in fastafile.seqs.items():
                 L = len(seq)
                 if L <= self.max_length:
@@ -298,6 +298,171 @@ class GTDBDataset(torch.utils.data.Dataset):
             target = seq[1:].clone()  # offset by 1, includes eos
         elif self.task == 'species_classification':
             target = self.species.index(filename)
+        else:
+            raise AttributeError('Unknown task, must be one of the ["next_token", "species_classification"]')
+
+        return data, target
+
+
+class CAMIDataset(torch.utils.data.Dataset):
+
+    '''
+    Loop thru bed file, retrieve (chr, start, end), query fasta file for sequence.
+    
+    '''
+
+    def __init__(
+        self,
+        split,
+        fasta_path,
+        taxonomy_path,
+        task,
+        max_length,
+        pad_max_length=None,
+        tokenizer=None,
+        tokenizer_name=None,
+        add_eos=False,
+        return_seq_indices=False,
+        shift_augs=None,
+        rc_aug=False,
+        return_augs=False,
+        replace_N_token=False,  # replace N token with pad token
+        pad_interval = False,  # options for different padding
+    ):
+
+        self.max_length = max_length
+        self.pad_max_length = pad_max_length if pad_max_length is not None else max_length
+        self.tokenizer_name = tokenizer_name
+        self.tokenizer = tokenizer
+        self.return_augs = return_augs
+        self.add_eos = add_eos
+        self.replace_N_token = replace_N_token  
+        self.pad_interval = pad_interval
+        SPLITS_CONFIG = {
+            'train': 1,
+            'test': 1,
+            'valid': 1,
+        }
+        self.N_split = SPLITS_CONFIG[split]
+        self.split = split
+        self.return_seq_indices = return_seq_indices
+        self.shift_augs = shift_augs
+        self.rc_aug = rc_aug
+        self.task = task
+        self.df_tax = pd.read_csv(taxonomy_path)
+        self.species = list(self.df_tax['s'])
+        self.species_map = {c: s for c, s in zip(self.df_tax['contigs'], self.df_tax['s'])}
+
+        self.files = {}
+        self.fasta_path = fasta_path
+        print(f'Parsing the fasta file {self.fasta_path}')
+
+        self._index_files()
+        self.datasets = {
+            'train': self.df,
+            'test': self.df_test,
+            'valid': self.df_test,
+        }
+        print(f'The dataset has {len(self.datasets["train"])} samples from {len(self.datasets["train"][0].unique())} files for training')
+        print(f'The dataset has {len(self.datasets["test"])} samples from {len(self.datasets["test"][0].unique())} files for testing')
+
+    def _index_files(self):
+        """Like bed file for HG38 but generated on the fly"""
+        # filenames, seq_names, starts, ends = [], [], [], []
+        # filenames_test, seq_names_test, starts_test, ends_test = [], [], [], []
+        seq_names, seqs, species = [], [], []
+        seq_names_test, seqs_test, species_test = [], [], []
+        fastafile = FastaInterval(
+            fasta_file = self.fasta_path,
+            return_seq_indices = self.return_seq_indices,
+            shift_augs = self.shift_augs,
+            rc_aug = self.rc_aug,
+            pad_interval = self.pad_interval,
+        )
+        N = len(fastafile.seqs)
+        N_TEST = int(N*0.1)
+        print(f'Train size {N}, test size {N_TEST}')
+        for name, seq in fastafile.seqs.items():
+            L = len(seq)
+            if L <= self.max_length:
+                rand_start = 0
+                rand_end = L
+                if coin_flip() and (len(seq_names_test) < N_TEST):
+                    seq_names_test.append(name)
+                    seq = fastafile(name, rand_start, rand_end, max_length=self.max_length, return_augs=self.return_augs)
+                    seqs_test.append(seq)
+                    species_test.append(self.species_map[name])
+                else:
+                    seq_names.append(name)
+                    seq = fastafile(name, rand_start, rand_end, max_length=self.max_length, return_augs=self.return_augs)
+                    seqs.append(seq)
+                    species.append(self.species_map[name])
+            else:
+                # get samples from the long sequences for each species
+                N_draws = int(L / self.max_length)
+                for _ in range(N_draws):
+                    rand_start = randrange(0, L - self.max_length)
+                    rand_end = rand_start + self.max_length
+                    seq_names.append(name)
+                    seq = fastafile(name, rand_start, rand_end, max_length=self.max_length, return_augs=self.return_augs)
+                    seqs.append(seq)
+                    species.append(self.species_map[name])
+        self.df = pd.DataFrame({0: seq_names, 1: seqs, 2: species})
+        self.df = self.df.sample(frac=1) # shuffle
+        self.df_test = pd.DataFrame({0: seq_names_test, 1: seqs_test, 2: species_test})
+        self.df_test = self.df_test.sample(frac=1) # shuffle
+
+    def __len__(self):
+        return len(self.datasets[self.split])
+
+    def replace_value(self, x, old_value, new_value):
+        return torch.where(x == old_value, new_value, x)
+
+    def __getitem__(self, idx):
+        """Returns a sequence of specified len"""
+        # sample a random row from df
+        df = self.datasets[self.split]
+        row = df.iloc[idx]
+        # row = (chr, start, end, split)
+        chr_name, seq, species = (row[0], row[1], row[2])
+
+        # seq = self.files[filename](chr_name, start, end, max_length=self.max_length, return_augs=self.return_augs)
+
+        if self.tokenizer_name == 'char':
+
+            seq = self.tokenizer(seq,
+                add_special_tokens=True if self.add_eos else False,  # this is what controls adding eos
+                padding="max_length",
+                max_length=self.max_length,
+                truncation=True,
+            )
+            seq = seq["input_ids"]  # get input_ids
+
+        elif self.tokenizer_name == 'bpe':
+            seq = self.tokenizer(seq, 
+                # add_special_tokens=False, 
+                padding="max_length",
+                max_length=self.pad_max_length,
+                truncation=True,
+            ) 
+            # get input_ids
+            if self.add_eos:
+                seq = seq["input_ids"][1:]  # remove the bos, keep the eos token
+            else:
+                seq = seq["input_ids"][1:-1]  # remove both special tokens
+        
+        # convert to tensor
+        seq = torch.LongTensor(seq)  # hack, remove the initial cls tokens for now
+
+        if self.replace_N_token:
+            # replace N token with a pad token, so we can ignore it in the loss
+            seq = self.replace_value(seq, self.tokenizer._vocab_str_to_int['N'], self.tokenizer.pad_token_id)
+
+        data = seq[:-1].clone()  # remove eos
+        if self.task == 'next_token':
+            target = seq[1:].clone()  # offset by 1, includes eos
+        elif self.task == 'species_classification':
+            target = self.species.index(species)
         else:
             raise AttributeError('Unknown task, must be one of the ["next_token", "species_classification"]')
 
